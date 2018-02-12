@@ -1,0 +1,276 @@
+---
+title: "Sap.io"
+author: "Darin Dooley"
+date: "February 8, 2018"
+output:
+  pdf_document: default
+  html_document: default
+---
+
+
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library(flexdashboard)
+library(tidyverse)
+library(MASS)
+library(ggplot2)
+library(corrplot)
+library(dplyr)
+library(randomForest)
+```
+|Data Exploration|
+Looking at the data and becoming familiar with each variable, specifically type, # missing values, potential outliers.
+
+```{r }
+wine = read.csv(file = 'C:/Users/Darin/Desktop/MSA DATA/Data quest/SAPio_DataScience_Challenge.csv',sep = ',') #read in data
+
+summary(wine) #look at summary stats 
+fix(wine) #look at the data 
+dim(wine) #dimensions of data 
+```
+Visual inspection of charts above show missing values on: 
+-astringency.rating,
+-residual.sugar(consider deleting)
+-astringency.rating
+-volatile.acidity
+-Ph
+-Vintage
+
+
+Var. with outliers:
+-total.sulfur.dioxide
+-residual.sugar
+
+
+Looking at distributions of variables for further insight and potential outliers.
+```{r}
+ggplot(data = wine, aes(x = quality)) +
+  geom_bar(width = 1, color = 'black',fill = I('blue')) #create hist. for looking at quality 
+```
+Initial thoughts, quality rating is normal, not a great distribution for trying to identify if wine is "good". bimodal would be preferred. Quality of wine is graded on a subjective taste test. The hope is that our taste testers are consistent with what makes a good wine. 
+
+scatter plots pairs function 
+```{r}
+pairs(wine,pch=".",gap=0) #look at dot plot of correlation 
+colnames <- dimnames(wine)[[2]]
+for (i in 2:14) {
+    hist(wine[,i],  main=colnames[i], probability=TRUE, col="blue", border="grey")
+} # creating histograms of var. 
+```
+From charts above we see several var. with outliers. If I had more time I would gain some subject matter then look closer at outliers to see if they are possible. For now, I will drop them. In addition, var. are not normal, I would consider doing a log transformation to improve accuracy of future models.
+Taking cation with removing outliers, consider doing a model with and without outliers. 
+multi.
+
+|Data Cleaning|
+If more time I would Consider looking at imputation for missing observations,
+  define cut off = drop var with % missing> 20%  delete var(residual.sugar)
+
+```{r }
+wine= as.data.frame(wine) #convert wine to a data frame 
+drop <- c("residual.sugar")
+wine=wine[ ,!(names(wine) %in% drop)] # delete residual. sugar var
+#fix(wine) 
+#dim(wine)
+```
+dummy code in catagorical vars. in order to run correlation map
+red = o white =1 
+ 
+
+```{r}
+wine_type = as.numeric(wine$type == "white") #dummy code in white 
+wine$type=wine_type #add numeric wine type
+fix(wine) # make sure it's been replaced 
+```
+
+
+Cool function for looking at outliers (uses tukeys method) identify the outliers ranged above and below the 1.5*IQR.
+if time(rewrite funtion to handle # cloumns so looping would be easier)
+
+```{r }
+outlierKD <- function(dt, var) {
+  var_name <- eval(substitute(var),eval(dt))
+  tot <- sum(!is.na(var_name))
+  na1 <- sum(is.na(var_name))
+  m1 <- mean(var_name, na.rm = T)
+  par(mfrow=c(2, 2), oma=c(0,0,3,0))
+  boxplot(var_name, main="With outliers")
+  hist(var_name, main="With outliers", xlab=NA, ylab=NA)
+  outlier <- boxplot.stats(var_name)$out
+  mo <- mean(outlier)
+  var_name <- ifelse(var_name %in% outlier, NA, var_name)
+  boxplot(var_name, main="Without outliers")
+  hist(var_name, main="Without outliers", xlab=NA, ylab=NA)
+  title("Outlier Check", outer=TRUE)
+  na2 <- sum(is.na(var_name))
+  message("Outliers identified: ", na2 - na1, " from ", tot, " observations")
+  message("Proportion (%) of outliers: ", (na2 - na1) / tot*100)
+  message("Mean of the outliers: ", mo)
+  m2 <- mean(var_name, na.rm = T)
+  message("Mean without removing outliers: ", m1)
+  message("Mean if we remove outliers: ", m2)
+  response <- readline(prompt="Do you want to remove outliers and to replace with NA? [yes/no]: ")
+  if(response == "y" | response == "yes"){
+    dt[as.character(substitute(var))] <- invisible(var_name)
+    assign(as.character(as.list(match.call())$dt), dt, envir = .GlobalEnv)
+    message("Outliers successfully removed", "\n")
+    return(invisible(dt))
+  } else{
+    message("Nothing changed", "\n")
+    return(invisible(var_name))
+  }
+}
+
+```
+delete outliers in total.sulfer dioxide, citric.acid,chlorides,alcohol 
+
+look into log transform rather than taking out the outliers
+remove missing in order to run correlation 
+if more time add labeling method for outlier graphs
+```{r}
+
+outlierKD(wine,total.sulfur.dioxide) #calling function from above on the wine data set and the total.sulfer.dioxide var
+outlierKD(wine,citric.acid) 
+outlierKD(wine,chlorides) 
+outlierKD(wine,alcohol) 
+#option presented for replacing var outliers with missing 
+
+# run function to look for outliers w/t option to remove 
+wine = na.omit(wine) # delete obs with ouliers 
+
+
+
+```
+
+Run correlation map to see association with target Var Quality 
+```{r }
+
+corr_mat = cor(wine) #look at correlation 
+corrplot(corr_mat, method = 'color') 
+cor(wine$quality,wine$alcohol) 
+
+```
+Amount of alcohol, Volatile acidity, density, are strongest predictive var.for quality.
+astringeny.rating and fixed acidity are almost perfectly correlated. Delete astringeny.rating to satisfy future assumptions of no multi. Collinearity 
+Chlorides show up way more in red wine 
+
+Looking closer at chlorides accross different levels 
+```{r }
+
+red= wine[wine$type==0,]  
+white= wine[wine$type==1,]
+
+boxplot(red$chlorides, main="red chloride", col="red",ylab="chloride levels") #boxplot of cholorides for red wine
+boxplot(white$chlorides, main="white",col = "grey",ylab="chloride levels") #boxplot of cholorides for white wine 
+boxplot(red$quality, main="Red Quality", col="red",ylab="Quality") #boxplot of red wine for quality 
+boxplot(white$quality, main="White Quality",col = "grey",ylab="Quality")#boxplot of white wines for quality 
+```
+Creating a subjective cut off for "good wine" using low, medium and high. 
+```{r }
+
+wine_test=wine # create wine test data set 
+
+wine_test$quality.bucket =  cut(wine$quality
+                         ,c(1, 4, 6, 10)
+                         ,labels = c("Low", "Medium", "High")) # splitting data 1-4 is low, 5-6 medium,7-10 is high 
+
+```
+
+creating color scheme for plot below 
+```{r Theme Configuration, message=FALSE, warning=FALSE, include=FALSE}
+label.colors <- theme(plot.title=element_text(color="red",size=14,face="bold",hjust=0.5)
+                   ,axis.title.x=element_text(color="blue",size=11,face="bold")
+                   ,axis.title.y=element_text(color="orange",size=11,face="bold")
+                   ,legend.title=element_text(color="yellow",size=11,face="bold"))
+```
+
+
+looking closer at %alcohol by wine as it is highly correlated with quality 
+```{r}
+ggplot(data = wine_test  
+      ,aes(x = quality.bucket, y = alcohol, fill = quality.bucket)) +
+  geom_boxplot(show.legend = FALSE) +
+  stat_summary(fun.y = mean, geom = 'point', shape = 4, show.legend = FALSE) +
+  facet_wrap(~type, ncol = 2) +
+  labs(title = "% ALCOHOL BY WINE QUALITY"
+      ,x = "Quality"
+      ,y = "% Alcohol") +
+  label.colors
+```
+From the box plot above we can see that the amount of Alcohol varies for High but not for med or low 
+
+
+
+```{r}
+wine$quality<-as.numeric(as.character(wine$quality))#converting wine to numeric 
+str(wine) #check structure 
+```
+Create Decision Tree 
+```{r}
+set.seed(1)
+index <- createDataPartition(wine$quality, p=0.75, list=FALSE) #splitting data into training and test sets 
+train <- wine[index,]
+test <- wine[-index,]
+
+model <- rpart(quality~., data=train) #using quality as target for Decision Tree
+prp(model, type=2, extra=1) #plot the data 
+
+#str(train)
+#str(test)
+```
+decision tree output and test 
+```{r}
+prediction <- predict(model, test)  #assign predictions 
+mae = mean(abs(prediction - test$quality)) #calculate absolute value of distance of predictions from test 
+print(paste('Average Distance From Truth: ', mae))
+```
+Mean absolute error isn't bad. On average, we are only .58 off from our prediction. 
+most important variables for quality are alcohol and free.sulfer.dioxide.
+
+
+Going to try using random forest for improved accuracy
+splitting on 300 trees 
+```{r}
+set.seed(0891) #setting random seed 
+model2= randomForest(quality~., train, ntree=300) #nbuild random forest with number of trees 300 
+varImpPlot(model2)# plot the data 
+```
+Random forest shows our most predictive important variables for predicting quality of wine.  density and alcohol are highly corr.  a
+Most predictive var. for quuality:
+-alcohol
+-density
+-volatile.acidity 
+```{r}
+prediction2 <- predict(model2, test)   #assign predictions                 
+mae = mean(abs(prediction2 - test$quality))  #calc. mean absolute error 
+print(paste('Average Distance From Truth: ', mae))
+```
+Random forest improves model accuracy 
+
+Now I am curious to see if what makes Red win good is different than what makes white wine good. 
+```{r}
+set.seed(1)
+index <- createDataPartition(wine$quality, p=0.75, list=FALSE)  #spliting data 75% IN TRAINING 
+train <- wine[index,]
+test <- wine[-index,]
+
+model_red <- rpart(quality~., data=train[train$type==0,])   #SPLIT DATA BY TYPE OF WINE, MODEL USING DECISION TREE (RED WINE) 
+prp(model_red, type=2, extra=1,main= "Red")
+
+model_white <- rpart(quality~., data=train[train$type==1,])  #SPLIT DATA BY TYPE OF WINE, MODEL USING DECISION TREE (WHITE WINE) 
+prp(model_white, type=2, extra=1,main="white")
+
+
+```
+
+We find by splitting by type that what makes wine "good" is different for the type of wine. 
+
+Lets see if that improves our accuracy.
+```{r}
+#run decision tree splitting on type of wine 
+prediction2 <- predict(model_white, test[test$type==1,])  #ASSIGN PREDICTIONS OF WHITE WINE             
+mae = mean(abs(prediction2 - test$quality[test$type==1])) #Calulate mean absolute error 
+print(paste('Average Distance From Truth: ', mae))
+```
+
+It doesn't improve accuracy because type isn't the best var. to split on,however, it is good to know there is a difference when lookin at wine. 
